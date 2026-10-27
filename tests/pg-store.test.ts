@@ -78,6 +78,16 @@ describe("PgStore against PostgreSQL (PGlite)", () => {
     expect(await store.getInvestigation("inv-pgtest0001")).toBeNull();
     expect(await store.getProject("p-missing00")).toBeNull();
 
+    // Per-user scoping: owner filters apply to both tables.
+    await store.saveProject({ ...project, id: "p-pgtestalice", ownerId: "github:1", createdAt: "2026-01-05T00:00:00Z" });
+    await store.saveInvestigation({ ...mk("inv-pgtestalice", "2026-01-06T00:00:00Z"), ownerId: "github:1" });
+    expect((await store.listProjects("github:1")).map((p) => p.id)).toEqual(["p-pgtestalice"]);
+    expect(await store.listProjects("github:2")).toEqual([]);
+    expect((await store.listProjects()).map((p) => p.id)).toEqual(["p-pgtestalice", project.id]);
+    expect((await store.listInvestigations(project.id, "github:1")).map((i) => i.id)).toEqual(["inv-pgtestalice"]);
+    expect((await store.getProject("p-pgtestalice"))?.ownerId).toBe("github:1");
+    expect((await store.getInvestigation("inv-pgtestalice"))?.ownerId).toBe("github:1");
+
     // Foreign key: investigations cannot reference unknown projects.
     await expect(store.saveInvestigation({ ...mk("inv-pgtest0003", "2026-01-04T00:00:00Z"), projectId: "p-missing00" })).rejects.toThrow();
   }, 30_000);

@@ -8,6 +8,7 @@ import type { ImpactReport } from "@/lib/analysis/types";
 import { api, type PublicGraph } from "@/lib/client/api";
 import type { Investigation, InvestigationMeta, ProjectMeta } from "@/lib/store/types";
 import { Badge, Button, Logo, Spinner, cx } from "@/components/ui";
+import { UserMenu } from "@/components/UserMenu";
 import { CodeViewer } from "./CodeViewer";
 import { FileList } from "./FileList";
 import { GraphCanvas, type Grouping } from "./GraphCanvas";
@@ -219,6 +220,7 @@ export function Workspace({ id }: { id: string }) {
           <History className="size-3.5" /> Investigations
           {saved && saved.length > 0 && <span className="rounded bg-ink-700 px-1 text-[10px]">{saved.length}</span>}
         </Button>
+        <UserMenu />
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[240px_1fr] xl:grid-cols-[260px_1fr_440px]">

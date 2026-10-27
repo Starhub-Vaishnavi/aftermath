@@ -6,7 +6,7 @@ import { SAMPLE_NAME, loadSampleRepo } from "../ingest/sample";
 
 export const SAMPLE_PROJECT_ID = "sample-acme-storefront";
 
-export async function createProject(name: string, source: ProjectSource, files: SourceFile[], skipped = 0, id = newId("p")): Promise<Project> {
+export async function createProject(name: string, source: ProjectSource, files: SourceFile[], skipped = 0, id = newId("p"), ownerId: string | null = null): Promise<Project> {
   const graph = buildGraph(files, { skippedFiles: skipped });
   const project: Project = {
     id,
@@ -14,6 +14,7 @@ export async function createProject(name: string, source: ProjectSource, files: 
     source,
     createdAt: new Date().toISOString(),
     stats: graph.stats,
+    ownerId,
     graph,
     files: Object.fromEntries(files.map((f) => [f.path, f.content])),
   };

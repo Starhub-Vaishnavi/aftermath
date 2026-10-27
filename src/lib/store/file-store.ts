@@ -52,7 +52,7 @@ export class FileStore implements Store {
 
   async saveProject(p: Project) {
     await this.writeJson(this.file("projects", p.id), p);
-    const meta: ProjectMeta = { id: p.id, name: p.name, source: p.source, createdAt: p.createdAt, stats: p.stats };
+    const meta: ProjectMeta = { id: p.id, name: p.name, source: p.source, createdAt: p.createdAt, stats: p.stats, ownerId: p.ownerId ?? null };
     await this.writeJson(path.join(this.root, "projects", "_meta", `${p.id}.json`), meta);
   }
 
@@ -60,9 +60,9 @@ export class FileStore implements Store {
     return this.readJson<Project>(this.file("projects", id));
   }
 
-  async listProjects() {
+  async listProjects(ownerId?: string) {
     const metas = (await this.listDir<ProjectMeta>("projects", (m) => m)) as ProjectMeta[];
-    return metas.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return metas.filter((m) => ownerId === undefined || m.ownerId === ownerId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   async saveInvestigation(i: Investigation) {
@@ -75,9 +75,9 @@ export class FileStore implements Store {
     return this.readJson<Investigation>(this.file("investigations", id));
   }
 
-  async listInvestigations(projectId: string) {
+  async listInvestigations(projectId: string, ownerId?: string) {
     const metas = (await this.listDir<InvestigationMeta>("investigations", (m) => m)) as InvestigationMeta[];
-    return metas.filter((m) => m.projectId === projectId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return metas.filter((m) => m.projectId === projectId && (ownerId === undefined || m.ownerId === ownerId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   async deleteInvestigation(id: string) {

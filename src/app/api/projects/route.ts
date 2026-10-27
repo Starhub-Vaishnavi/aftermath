@@ -2,16 +2,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { fetchGitHubRepo, parseGitHubUrl } from "@/lib/ingest/github";
 import { LIMITS } from "@/lib/ingest/limits";
 import { extractZip } from "@/lib/ingest/zip";
-import { getStore } from "@/lib/store";
+import { getStore, newId } from "@/lib/store";
 import { createProject, ensureSampleProject } from "@/lib/server/projects";
 import { handleError, jsonError } from "@/lib/server/http";
+import { currentUserId, ownerFilter, requireUser } from "@/lib/server/user";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function GET() {
   try {
-    return NextResponse.json({ projects: await getStore().listProjects(), store: getStore().kind });
+    const uid = await currentUserId();
+    return NextResponse.json({ projects: await getStore().listProjects(ownerFilter(uid)), store: getStore().kind });
   } catch (err) {
     return handleError(err);
   }
@@ -19,6 +21,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const uid = await requireUser();
     const type = req.headers.get("content-type") ?? "";
     if (type.startsWith("multipart/form-data")) {
       const declared = Number(req.headers.get("content-length") ?? 0);
@@ -29,7 +32,7 @@ export async function POST(req: NextRequest) {
       if (file.size > LIMITS.maxArchiveBytes) return jsonError("Upload is too large.", 413);
       const { files, skipped, rootPrefix } = extractZip(new Uint8Array(await file.arrayBuffer()));
       const name = (rootPrefix ?? file.name.replace(/\.zip$/i, "")).slice(0, 80) || "upload";
-      const project = await createProject(name, { type: "zip", label: file.name.slice(0, 120) }, files, skipped);
+      const project = await createProject(name, { type: "zip", label: file.name.slice(0, 120) }, files, skipped, newId("p"), uid);
       return NextResponse.json({ id: project.id, stats: project.stats });
     }
 
@@ -46,6 +49,8 @@ export async function POST(req: NextRequest) {
         { type: "github", label: `github.com/${ref.owner}/${ref.repo}`, url: `https://github.com/${ref.owner}/${ref.repo}`, ref: resolvedRef },
         files,
         skipped,
+        newId("p"),
+        uid,
       );
       return NextResponse.json({ id: project.id, stats: project.stats });
     }

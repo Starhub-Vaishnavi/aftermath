@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/client/api";
 import type { Investigation } from "@/lib/store/types";
 import { Badge, Button, Logo, Spinner, cx } from "@/components/ui";
+import { UserMenu } from "@/components/UserMenu";
 
 type Row = { file: string; a: Investigation["report"]["impacted"][number] | null; b: Investigation["report"]["impacted"][number] | null };
 
@@ -71,6 +72,7 @@ export function Compare({ projectId }: { projectId: string }) {
         <Link href={`/p/${projectId}`} className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-100">
           <ArrowLeft className="size-3.5" /> Back to graph
         </Link>
+        <UserMenu className="ml-auto" />
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">
         <h1 className="text-xl font-semibold tracking-tight">Compare proposed changes</h1>

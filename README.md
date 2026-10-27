@@ -51,6 +51,7 @@ The PostgreSQL store test runs against [PGlite](https://pglite.dev) (Postgres co
 2. Add environment variables:
    - `DATABASE_URL`: any PostgreSQL (Neon, Supabase, RDS…). **Recommended.** Serverless instances don't share a disk, so without it saved projects and investigations live in each instance's `/tmp` and can disappear. The bundled sample always works because it is rebuilt on demand.
    - `ANTHROPIC_API_KEY` (optional) for AI explanations.
+   - `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` (optional) turn on sign-in. See [Sign-in](#sign-in-optional).
    - `GITHUB_TOKEN`: not needed. Imports download `github.com/<owner>/<repo>/archive/HEAD.zip` directly, so they don't use the rate-limited REST API.
 3. Deploy. Route handlers run on the Node.js runtime; imports of large repositories are bounded by `maxDuration` (120 s).
 
@@ -149,7 +150,20 @@ The UI keeps three labels visually distinct: **confirmed** dependency, **possibl
 - GitHub import only contacts `github.com` and `codeload.github.com` (redirects elsewhere are refused) with a URL built from a validated `owner/repo/ref`. Private repos return 404 to anonymous archive requests and are rejected. Downloads are streamed with a hard size cap and timeouts.
 - Source shown in the UI is rendered as text, never as HTML.
 
-### 6. Persistence
+### 6. Sign-in (optional)
+
+GitHub sign-in uses [Auth.js](https://authjs.dev) with stateless JWT sessions, so it needs no extra tables. It switches on only when `AUTH_SECRET`, `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` are all set; otherwise the app stays open and behaves exactly as before.
+
+With sign-in on:
+
+- Middleware sends signed-out visitors to `/signin`, and API calls get a `401`.
+- Imported projects and saved investigations carry an `ownerId` (`github:<numeric id>`, which survives username changes). Lists show only your own records. Another user's project or investigation answers `404`, including on delete.
+- The bundled sample is shared by everyone, but the investigations you run on it are yours alone.
+- The sign-in page only follows same-site `callbackUrl` paths, so it can't be used as an open redirect.
+
+To set it up, create a GitHub OAuth App (GitHub → Settings → Developer settings → OAuth Apps). Set its callback URL to `https://<your-domain>/api/auth/callback/github` (or `http://localhost:3100/api/auth/callback/github` locally), then add the three variables.
+
+### 7. Persistence
 
 `Store` has two implementations chosen at startup: `PgStore` (tables `aftermath_projects`, `aftermath_investigations`, JSONB columns, created on first use) when `DATABASE_URL` is set, otherwise `FileStore` (atomic JSON writes under `.data/`). Investigations are saved automatically and can be reopened (`/p/<id>?inv=<inv>`) or compared side by side (`/p/<id>/compare?a=…&b=…`), showing shared files, files unique to each change, and confidence/depth per file.
 

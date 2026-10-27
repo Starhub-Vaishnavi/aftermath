@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@/lib/store";
 import { handleError, jsonError } from "@/lib/server/http";
+import { canViewInvestigation, currentUserId } from "@/lib/server/user";
 
 export const runtime = "nodejs";
 
@@ -8,7 +9,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params;
     const inv = await getStore().getInvestigation(id).catch(() => null);
-    if (!inv) return jsonError("Investigation not found.", 404);
+    if (!inv || !canViewInvestigation(inv, await currentUserId())) return jsonError("Investigation not found.", 404);
     return NextResponse.json({ investigation: inv });
   } catch (err) {
     return handleError(err);
@@ -18,6 +19,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const inv = await getStore().getInvestigation(id).catch(() => null);
+    if (!inv || !canViewInvestigation(inv, await currentUserId())) return jsonError("Investigation not found.", 404);
     await getStore().deleteInvestigation(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
