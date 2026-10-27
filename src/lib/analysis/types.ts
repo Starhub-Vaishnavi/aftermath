@@ -112,14 +112,14 @@ export interface GraphEdge {
   text: string;
   specifier: string;
   /** How the specifier was resolved, for transparency. */
-  resolution: "relative" | "tsconfig-paths" | "base-url";
+  resolution: "relative" | "tsconfig-paths" | "base-url" | "workspace-package";
 }
 
 export interface UnresolvedImport {
   from: string;
   specifier: string;
   line: number;
-  reason: "external-package" | "not-found" | "non-literal" | "builtin";
+  reason: "external-package" | "not-found" | "non-literal" | "builtin" | "non-js-asset";
 }
 
 export interface DependencyGraph {

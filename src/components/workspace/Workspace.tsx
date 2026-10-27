@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Eye, EyeOff, FlaskConical, History, MousePointerClick, Network, TestTube2 } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, FlaskConical, FolderTree, History, MousePointerClick, Network, TestTube2, Workflow, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -10,12 +10,14 @@ import type { Investigation, InvestigationMeta, ProjectMeta } from "@/lib/store/
 import { Badge, Button, Logo, Spinner, cx } from "@/components/ui";
 import { CodeViewer } from "./CodeViewer";
 import { FileList } from "./FileList";
-import { GraphCanvas } from "./GraphCanvas";
+import { GraphCanvas, type Grouping } from "./GraphCanvas";
 import { Inspector, type ProposalState } from "./Inspector";
 import { InvestigationsDrawer } from "./InvestigationsDrawer";
 import { Results } from "./Results";
 
 type Loaded = { project: ProjectMeta; graph: PublicGraph };
+
+const FOLDER_VIEW_THRESHOLD = 120;
 
 export function Workspace({ id }: { id: string }) {
   const router = useRouter();
@@ -39,6 +41,8 @@ export function Workspace({ id }: { id: string }) {
   const [code, setCode] = useState<{ path: string; line: number } | null>(null);
   const [focusImpact, setFocusImpact] = useState(false);
   const [hideTests, setHideTests] = useState(false);
+  const [grouping, setGrouping] = useState<Grouping>("files");
+  const [folderFocus, setFolderFocus] = useState<string | null>(null);
 
   const [drawer, setDrawer] = useState(false);
   const [saved, setSaved] = useState<InvestigationMeta[] | null>(null);
@@ -47,7 +51,11 @@ export function Workspace({ id }: { id: string }) {
   useEffect(() => {
     api
       .getProject(id)
-      .then(setData)
+      .then((d) => {
+        // Large repositories open as a folder map; files are one click away.
+        if (d.graph.nodes.length > FOLDER_VIEW_THRESHOLD) setGrouping("folders");
+        setData(d);
+      })
       .catch((e) => setLoadError((e as Error).message));
   }, [id]);
 
@@ -191,7 +199,7 @@ export function Workspace({ id }: { id: string }) {
           <Logo />
         </Link>
         <span className="h-4 w-px bg-ink-700" />
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none">
           {project.source.type === "sample" && <FlaskConical className="size-3.5 shrink-0 text-ember-400" />}
           <span className="truncate font-mono text-[13px] text-ink-100">{project.name}</span>
           {project.source.ref && <Badge>{project.source.ref}</Badge>}
@@ -222,10 +230,39 @@ export function Workspace({ id }: { id: string }) {
           {graph.nodes.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-ink-400">No analyzable files.</div>
           ) : (
-            <GraphCanvas graph={graph} selectedFile={file} report={report} emphasizeFile={hover} focusImpact={focusImpact} hideTests={hideTests} onSelectFile={selectFile} />
+            <GraphCanvas
+              graph={graph}
+              selectedFile={file}
+              report={report}
+              emphasizeFile={hover}
+              focusImpact={focusImpact}
+              hideTests={hideTests}
+              grouping={grouping}
+              folderFocus={folderFocus}
+              onSelectFile={selectFile}
+              onOpenFolder={(dir) => {
+                setGrouping("files");
+                setFolderFocus(dir);
+              }}
+            />
           )}
 
           <div className="pointer-events-none absolute top-3 left-3 flex flex-wrap items-center gap-2">
+            <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-ink-700 bg-ink-900/90 p-1 backdrop-blur">
+              <ToggleChip on={grouping === "files"} onClick={() => setGrouping("files")} icon={<Workflow className="size-3.5" />}>
+                Files
+              </ToggleChip>
+              <ToggleChip
+                on={grouping === "folders"}
+                onClick={() => {
+                  setGrouping("folders");
+                  setFolderFocus(null);
+                }}
+                icon={<FolderTree className="size-3.5" />}
+              >
+                Folders
+              </ToggleChip>
+            </div>
             <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-ink-700 bg-ink-900/90 p-1 backdrop-blur">
               <ToggleChip on={focusImpact} onClick={() => setFocusImpact((v) => !v)} disabled={!report} icon={focusImpact ? <Eye className="size-3.5" /> : <Network className="size-3.5" />}>
                 {focusImpact ? "Impact only" : "Full graph"}
@@ -234,12 +271,21 @@ export function Workspace({ id }: { id: string }) {
                 {hideTests ? "Tests hidden" : "Tests shown"}
               </ToggleChip>
             </div>
+            {folderFocus !== null && grouping === "files" && (
+              <button
+                onClick={() => setFolderFocus(null)}
+                className="pointer-events-auto flex items-center gap-1.5 rounded-xl border border-ember-500/40 bg-ink-900/90 px-2.5 py-1.5 font-mono text-[11px] text-ember-400 backdrop-blur hover:border-ember-500"
+                title="Show all files"
+              >
+                {folderFocus || "/"} + neighbors <X className="size-3" />
+              </button>
+            )}
             <Legend />
           </div>
 
-          {graph.nodes.length > 600 && (
-            <div className="absolute top-14 left-3 rounded-lg border border-amber-impact/30 bg-ink-900/90 px-3 py-1.5 text-[11px] text-amber-impact">
-              Large graph ({graph.nodes.length} files). Use “Impact only” to focus.
+          {graph.nodes.length > FOLDER_VIEW_THRESHOLD && grouping === "files" && folderFocus === null && !focusImpact && (
+            <div className="absolute bottom-3 left-14 rounded-lg border border-amber-impact/30 bg-ink-900/90 px-3 py-1.5 text-[11px] text-amber-impact">
+              {graph.nodes.length} files — switch to Folders or “Impact only” for a readable map.
             </div>
           )}
 
@@ -327,7 +373,7 @@ function Legend() {
     </span>
   );
   return (
-    <div className="pointer-events-auto hidden items-center gap-3 rounded-xl border border-ink-700 bg-ink-900/90 px-3 py-1.5 text-[11px] text-ink-300 backdrop-blur sm:flex">
+    <div className="pointer-events-auto hidden items-center gap-3 rounded-xl 2xl:flex border border-ink-700 bg-ink-900/90 px-3 py-1.5 text-[11px] text-ink-300 backdrop-blur">
       {item("border-ember-500 bg-ember-500/40", "Changed")}
       {item("border-amber-impact bg-amber-impact/30", "Confirmed")}
       {item("border-dashed border-amber-impact", "Possible")}

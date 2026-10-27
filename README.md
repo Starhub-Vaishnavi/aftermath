@@ -9,6 +9,14 @@ import ─▶ parse ─▶ graph ─▶ select target ─▶ describe change ─
            (TS parser)                                          (deterministic)   (LLM, grounded)
 ```
 
+## Links
+
+| | |
+| --- | --- |
+| Source | https://github.com/Starhub-Vaishnavi/aftermath |
+| Live app | _added after deployment_ |
+| Demo video | _added after recording_ (shot list: [DEMO.md](DEMO.md)) |
+
 ---
 
 ## Quick start
@@ -30,10 +38,24 @@ Optional configuration (`.env.local`, see `.env.example`):
 | `GITHUB_TOKEN` | Raises GitHub API rate limits for repository import. |
 
 ```bash
-npm test             # vitest: parser, resolver, graph, impact, ingestion, LLM grounding
+npm test             # vitest: parser, resolver, monorepos, graph, impact, ingestion, LLM grounding, PostgreSQL store
+npm run lint         # ESLint (next/core-web-vitals + typescript)
 npm run typecheck
 npm run build && npm start
 ```
+
+The PostgreSQL store test runs against [PGlite](https://pglite.dev) (Postgres compiled to WASM) over a real TCP socket, so the `pg` driver, JSONB columns and foreign keys are exercised without installing a database.
+
+## Deployment (Vercel)
+
+1. Import the GitHub repo in Vercel (framework preset: Next.js; no build settings needed).
+2. Add environment variables:
+   - `DATABASE_URL`: any PostgreSQL (Neon, Supabase, RDS…). **Recommended.** Serverless instances don't share a disk, so without it saved projects and investigations live in each instance's `/tmp` and can disappear. The bundled sample always works because it is rebuilt on demand.
+   - `ANTHROPIC_API_KEY` (optional) for AI explanations.
+   - `GITHUB_TOKEN` (optional) for higher GitHub rate limits.
+3. Deploy. Route handlers run on the Node.js runtime; imports of large repositories are bounded by `maxDuration` (120 s).
+
+Any Node host (Render, Railway, Fly, a VM) also works with `npm run build && npm start`; there the JSON file store persists in `./.data` (or `AFTERMATH_DATA_DIR`).
 
 ---
 
@@ -61,7 +83,7 @@ Changing **`formatPrice`** reaches 9 files over three levels: `pricing.ts → ca
 src/
   lib/analysis/        deterministic core (no I/O, no LLM)
     parser.ts          ts.createSourceFile → imports, exports, per-declaration references
-    resolver.ts        relative, index, ESM ".js"→".ts", tsconfig baseUrl/paths; never guesses
+    resolver.ts        relative, index, ESM ".js"→".ts", nested tsconfig paths/extends, workspace packages + exports maps
     graph.ts           files → nodes + evidence-carrying edges + unresolved/external report
     impact.ts          symbol-aware reverse traversal with evidence chains
   lib/ingest/          untrusted-input handling: ZIP (in memory), GitHub archive, sample loader
@@ -83,7 +105,14 @@ tests/
 
 ### 2. Resolution and graph construction
 
-A specifier becomes an edge **only if it resolves to a file in the uploaded set**. Resolution order mirrors TypeScript's: exact path, ESM-style `.js`→`.ts`, extensions, `index.*`, then `compilerOptions.paths` and `baseUrl` from the root `tsconfig.json`/`jsconfig.json` (parsed with the compiler's JSONC reader). Everything else is classified as `external-package`, `builtin`, `not-found` or `non-literal` and shown to the user. Each edge carries the import kind, imported names, type-only flag, line, statement text and how it was resolved.
+A specifier becomes an edge **only if it resolves to a file in the uploaded set**. Resolution order mirrors TypeScript's:
+
+1. Relative/absolute paths: exact, ESM-style `.js`→`.ts`, extensions, `index.*`.
+2. `compilerOptions.paths` from the **nearest** `tsconfig.json`/`jsconfig.json`, following relative `extends` chains (parsed with the compiler's JSONC reader; `paths` resolve against `baseUrl` when set, otherwise the declaring config, as in TypeScript).
+3. **Workspace packages** declared by `package.json#workspaces`, `pnpm-workspace.yaml` or `lerna.json`: `exports` maps (subpaths, `*` patterns, nested conditions, preferring `source`/`types`), then `source`/`module`/`main`/`types`. Build output is usually absent from source, so a target under `dist/`, `build/`, `lib/`… is also tried at the mirrored `src/` path. These edges are labeled `workspace-package`. `exports` is authoritative: unlisted subpaths are reported, not resolved.
+4. `baseUrl`-relative bare specifiers.
+
+Everything else is classified as `external-package`, `builtin`, `not-found`, `non-literal` or `non-js-asset` (`.vue`, `.svelte`, `.css`, images…) and shown to the user. Each edge carries the import kind, imported names, type-only flag, line, statement text and how it was resolved.
 
 ### 3. Impact traversal
 
@@ -133,7 +162,8 @@ The UI keeps three labels visually distinct: **confirmed** dependency, **possibl
 - **Symbol-level propagation by default.** File-level reachability over-reports (every importer of a barrel lights up). Tracking affected export names through declaration references cuts noise while staying evidence-based; file mode remains available.
 - **The LLM is downstream of the facts.** It receives evidence, returns hypotheses, and its output is filtered against the evidence. Deterministic results are useful on their own, and tests cover them independently.
 - **Zero-config by default.** The JSON store and deterministic fallback mean `npm install && npm run dev` gives a working demo; PostgreSQL and the API key are upgrades, not prerequisites.
-- **Layout on the client with dagre (LR)**, with edges drawn from a module to its importers, so impact visibly flows left to right.
+- **Layout on the client with dagre (LR)**, with edges drawn from a module to its importers, so impact visibly flows left to right. A folder projection reuses the same layout and rendering for large repositories.
+- **Serverless-aware storage.** The file store writes to the OS temp dir on Vercel/Lambda and the sample project self-heals, but PostgreSQL is the supported production store.
 
 ## Limitations
 
@@ -141,10 +171,10 @@ The UI keeps three labels visually distinct: **confirmed** dependency, **possibl
 - **Name-based references.** Shadowing a binding with a local variable of the same name can cause a false positive (conservative); aliasing a value through runtime structures (`const fns = { formatPrice }; fns[key]()`) is tracked only as far as the declaration that contains it.
 - **No type-level inference.** A change to an interface reaches files that name it, not files that only receive values of that type structurally.
 - **Runtime-only coupling is invisible:** string-based lookups, DI containers, `require(variable)`, framework file-system routing, and HTTP boundaries. Non-literal specifiers are reported so you know where the blind spots are.
-- **Module resolution** covers relative paths, index files, ESM `.js` specifiers and root `tsconfig` `paths`/`baseUrl`. Package `exports` maps, workspace packages (monorepo cross-package imports are shown as external), nested tsconfigs and webpack/vite aliases are not resolved yet.
-- **Large graphs**: verified interactively on repos of about 100 files (e.g. `sindresorhus/ky`: 98 files, 190 edges, imported in ~2.5 s). Thousands of nodes will lay out slowly, and files with very high fan-in produce tall layouts; use **Impact only** to focus.
+- **Module resolution** covers relative paths, index files, ESM `.js` specifiers, nested tsconfig `paths`/`baseUrl`/`extends`, and workspace packages with `exports` maps. Not resolved: webpack/vite/babel aliases, `imports` (`#internal`) maps, `extends` from npm packages, and Vue/Svelte single-file components (their imports are listed as `non-js-asset`).
+- **Large graphs**: verified on `sindresorhus/ky` (98 files, 190 edges, ~2.5 s import) and the `TanStack/store` pnpm monorepo (200 files, 235 edges incl. 36 cross-package, ~2 s). Repos over 120 files open in the **Folders** view (one node per directory, aggregated edges, worst impact state per folder); click a folder to see its files and their neighbors. Thousands of files will lay out slowly.
 - Side-effect imports (`import "./x"`) are not treated as dependents of a specific symbol in symbol mode.
 
 ## Roadmap
 
-Workspace/monorepo package resolution, `package.json#exports`, per-directory tsconfigs, collapsing directories into clusters for very large graphs, streaming the LLM explanation into the UI, git-diff mode (analyze an actual patch), and more languages via tree-sitter, each with its own honest capability matrix.
+Bundler alias configs, `package.json#imports`, streaming the LLM explanation into the UI, git-diff mode (analyze an actual patch), and more languages via tree-sitter, each with its own honest capability matrix.

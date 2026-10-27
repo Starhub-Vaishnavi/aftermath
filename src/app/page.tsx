@@ -66,7 +66,7 @@ export default function Home() {
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_60%_50%_at_50%_0%,rgba(255,106,61,0.14),transparent_70%)]" />
       <header className="relative mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <Logo />
-        <span className="text-xs text-ink-400">JavaScript &amp; TypeScript · static analysis + AI explanations</span>
+        <span className="hidden text-xs text-ink-400 sm:inline">JavaScript &amp; TypeScript · static analysis + AI explanations</span>
       </header>
 
       <section className="relative mx-auto max-w-6xl px-6 pt-14 pb-10">

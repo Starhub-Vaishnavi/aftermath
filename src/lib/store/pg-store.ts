@@ -34,9 +34,13 @@ export class PgStore implements Store {
   private pool: Pool;
   private ready: Promise<void>;
 
-  constructor(connectionString: string) {
-    this.pool = new Pool({ connectionString, max: 5 });
+  constructor(connectionString: string, opts: { max?: number } = {}) {
+    this.pool = new Pool({ connectionString, max: opts.max ?? 5 });
     this.ready = this.pool.query(SCHEMA).then(() => undefined);
+  }
+
+  async close() {
+    await this.pool.end();
   }
 
   private async q<T extends Row = Row>(sql: string, params: unknown[] = []): Promise<T[]> {

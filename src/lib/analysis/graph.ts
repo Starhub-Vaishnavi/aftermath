@@ -1,5 +1,5 @@
 import { isAnalyzablePath, parseModule } from "./parser";
-import { ModuleResolver, dirname, packageName, readPathAliases } from "./resolver";
+import { ModuleResolver, dirname, packageName, readResolverConfig } from "./resolver";
 import type { DependencyGraph, GraphEdge, GraphNode, ParsedModule, SourceFile, UnresolvedImport } from "./types";
 
 const TEST_PATTERN = /(^|\/)(__tests__|tests?|spec)\/|\.(test|spec)\.[cm]?[jt]sx?$/;
@@ -16,7 +16,7 @@ export function buildGraph(files: SourceFile[], opts: { skippedFiles?: number } 
   const contents = new Map(files.map((f) => [f.path, f.content]));
   const sources = files.filter((f) => isAnalyzablePath(f.path)).sort((a, b) => a.path.localeCompare(b.path));
   const fileSet = new Set(sources.map((f) => f.path));
-  const resolver = new ModuleResolver(fileSet, readPathAliases(contents));
+  const resolver = new ModuleResolver(fileSet, readResolverConfig(contents));
 
   const modules: Record<string, ParsedModule> = {};
   const nodes: GraphNode[] = [];

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { analyzeImpact } from "@/lib/analysis/impact";
 import { explainImpact } from "@/lib/llm/explain";
-import { getStore, loadProject, newId } from "@/lib/store";
+import { getStore, newId } from "@/lib/store";
 import type { Investigation } from "@/lib/store/types";
+import { getProject } from "@/lib/server/projects";
 import { handleError, jsonError } from "@/lib/server/http";
 import { InvestigationRequest } from "@/lib/server/validate";
 
@@ -23,7 +24,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const parsed = InvestigationRequest.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Invalid request.");
-    const project = await loadProject(id).catch(() => null);
+    const project = await getProject(id);
     if (!project) return jsonError("Project not found.", 404);
     const { file, symbol, mode, includeTypeOnly, change, title } = parsed.data;
     if (!project.graph.modules[file]) return jsonError("That file is not part of the analyzed graph.", 404);

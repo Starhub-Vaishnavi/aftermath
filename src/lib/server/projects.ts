@@ -28,6 +28,12 @@ export async function ensureSampleProject(): Promise<Project> {
   return createProject(SAMPLE_NAME, { type: "sample", label: "Bundled sample" }, files, 0, SAMPLE_PROJECT_ID);
 }
 
+/** Loads a project; the bundled sample is rebuilt on demand so it survives ephemeral storage. */
+export async function getProject(id: string): Promise<Project | null> {
+  if (id === SAMPLE_PROJECT_ID) return ensureSampleProject();
+  return loadProject(id).catch(() => null);
+}
+
 /** The graph as sent to the browser: per-declaration reference tables stay on the server. */
 export function publicGraph(graph: DependencyGraph) {
   const { modules: _modules, ...rest } = graph;

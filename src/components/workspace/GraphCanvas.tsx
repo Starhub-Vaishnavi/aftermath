@@ -17,6 +17,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { Folder } from "lucide-react";
 import { memo, useEffect, useMemo } from "react";
 import type { ImpactReport } from "@/lib/analysis/types";
 import type { PublicGraph } from "@/lib/client/api";
@@ -24,27 +25,38 @@ import { basename, cx, dirOf } from "@/components/ui";
 
 const NODE_W = 210;
 const NODE_H = 46;
+const FOLDER_PREFIX = "dir:";
 
 type NodeState = "idle" | "target" | "confirmed" | "possible" | "excluded" | "dim";
+const STATE_RANK: Record<NodeState, number> = { target: 5, confirmed: 4, possible: 3, excluded: 2, idle: 1, dim: 0 };
 
-interface FileNodeData extends Record<string, unknown> {
-  path: string;
+export type Grouping = "files" | "folders";
+
+interface BaseNodeData {
+  label: string;
+  sublabel: string;
+  ext: string;
   state: NodeState;
   depth: number | null;
-  selected: boolean;
   isTest: boolean;
+  /** Folder nodes only: number of files, and how many are impacted. */
+  folder: { files: number; impacted: number } | null;
+}
+
+interface NodeData extends BaseNodeData, Record<string, unknown> {
+  selected: boolean;
   emphasized: boolean;
 }
 
 const EXT_COLOR: Record<string, string> = { ts: "#4f8dff", tsx: "#5ec8ff", js: "#f4d35e", jsx: "#f7b955", mjs: "#f4d35e", cjs: "#e8c547", mts: "#4f8dff", cts: "#4f8dff" };
 
-const FileNode = memo(function FileNode({ data }: NodeProps<Node<FileNodeData>>) {
-  const ext = data.path.split(".").pop() ?? "";
+const GraphNode = memo(function GraphNode({ data }: NodeProps<Node<NodeData>>) {
   const s = data.state;
   return (
     <div
       className={cx(
         "group relative flex h-[46px] w-[210px] items-center gap-2.5 rounded-[10px] border px-3 transition-all duration-200",
+        data.folder && "border-2",
         s === "idle" && "border-ink-700 bg-ink-850 hover:border-ink-500",
         s === "dim" && "border-ink-800 bg-ink-900 opacity-[0.28]",
         s === "target" && "target-pulse border-ember-500 bg-[#2a1610]",
@@ -56,13 +68,22 @@ const FileNode = memo(function FileNode({ data }: NodeProps<Node<FileNodeData>>)
       )}
     >
       <Handle type="target" position={Position.Left} className="!size-1.5 !min-h-0 !min-w-0 !border-0 !bg-ink-600" />
-      <span className="size-2 shrink-0 rounded-[3px]" style={{ background: EXT_COLOR[ext] ?? "#8a8f98" }} />
+      {data.folder ? (
+        <Folder className="size-3.5 shrink-0 text-ink-400" />
+      ) : (
+        <span className="size-2 shrink-0 rounded-[3px]" style={{ background: EXT_COLOR[data.ext] ?? "#8a8f98" }} />
+      )}
       <div className="min-w-0 flex-1 leading-tight">
-        <div className={cx("truncate font-mono text-[12px] font-medium", s === "dim" ? "text-ink-400" : "text-ink-100")}>{basename(data.path)}</div>
-        <div className="truncate text-[10px] text-ink-400">{dirOf(data.path) || "/"}</div>
+        <div className={cx("truncate font-mono text-[12px] font-medium", s === "dim" ? "text-ink-400" : "text-ink-100")}>{data.label}</div>
+        <div className="truncate text-[10px] text-ink-400">{data.sublabel}</div>
       </div>
       {data.isTest && <span className="rounded bg-ink-700 px-1 text-[9px] font-semibold tracking-wide text-ink-300">TEST</span>}
-      {data.depth !== null && data.depth > 0 && (
+      {data.folder && data.folder.impacted > 0 && s !== "target" && (
+        <span className="rounded-full bg-amber-impact px-1.5 text-[10px] font-semibold text-ink-950 tabular-nums" title="Impacted files in this folder">
+          {data.folder.impacted}
+        </span>
+      )}
+      {!data.folder && data.depth !== null && data.depth > 0 && (
         <span
           className={cx(
             "flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums",
@@ -79,17 +100,23 @@ const FileNode = memo(function FileNode({ data }: NodeProps<Node<FileNodeData>>)
   );
 });
 
-const nodeTypes = { file: FileNode };
+const nodeTypes = { item: GraphNode };
 
-function layout(graph: PublicGraph, visible: Set<string>) {
+/** A file- or folder-level view of the dependency graph that shares layout and rendering. */
+interface Projection {
+  nodes: { id: string; data: BaseNodeData }[];
+  /** key = "<from>-><to>" in impact direction (imported module -> importer) */
+  edges: Map<string, { from: string; to: string; typeOnly: boolean; dynamic: boolean; count: number; underlying: Set<string> }>;
+  /** file path -> projected node id */
+  owner: Map<string, string>;
+}
+
+function layout(nodeIds: string[], edges: Projection["edges"]) {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: "LR", nodesep: 14, ranksep: 90, marginx: 20, marginy: 20 });
   g.setDefaultEdgeLabel(() => ({}));
-  for (const n of graph.nodes) if (visible.has(n.id)) g.setNode(n.id, { width: NODE_W, height: NODE_H });
-  for (const e of graph.edges) {
-    // Draw from the imported module to its importer: the direction impact travels.
-    if (visible.has(e.source) && visible.has(e.target)) g.setEdge(e.target, e.source);
-  }
+  for (const id of nodeIds) g.setNode(id, { width: NODE_W, height: NODE_H });
+  for (const e of edges.values()) g.setEdge(e.from, e.to);
   dagre.layout(g);
   const pos = new Map<string, { x: number; y: number }>();
   for (const id of g.nodes()) {
@@ -106,10 +133,14 @@ export interface GraphCanvasProps {
   emphasizeFile: string | null;
   focusImpact: boolean;
   hideTests: boolean;
+  grouping: Grouping;
+  /** When set (files view), only files in this folder and their direct neighbors are shown. */
+  folderFocus: string | null;
   onSelectFile: (path: string) => void;
+  onOpenFolder: (dir: string) => void;
 }
 
-function Canvas({ graph, selectedFile, report, emphasizeFile, focusImpact, hideTests, onSelectFile }: GraphCanvasProps) {
+function Canvas({ graph, selectedFile, report, emphasizeFile, focusImpact, hideTests, grouping, folderFocus, onSelectFile, onOpenFolder }: GraphCanvasProps) {
   const rf = useReactFlow();
 
   const impactState = useMemo(() => {
@@ -126,107 +157,166 @@ function Canvas({ graph, selectedFile, report, emphasizeFile, focusImpact, hideT
     return { state, pathEdges, chain };
   }, [report, emphasizeFile]);
 
-  const visible = useMemo(() => {
-    const set = new Set<string>();
-    for (const n of graph.nodes) {
-      if (hideTests && n.isTest) continue;
-      if (focusImpact && impactState && !impactState.state.has(n.id)) continue;
-      set.add(n.id);
+  /** Files that pass the filters. */
+  const visibleFiles = useMemo(() => {
+    let files = graph.nodes.filter((n) => !(hideTests && n.isTest) && !(focusImpact && impactState && !impactState.state.has(n.id)));
+    if (grouping === "files" && folderFocus !== null) {
+      const inFolder = new Set(files.filter((n) => n.dir === folderFocus).map((n) => n.id));
+      const keep = new Set(inFolder);
+      for (const e of graph.edges) {
+        if (inFolder.has(e.source)) keep.add(e.target);
+        if (inFolder.has(e.target)) keep.add(e.source);
+      }
+      files = files.filter((n) => keep.has(n.id));
     }
-    return set;
-  }, [graph, hideTests, focusImpact, impactState]);
+    return files;
+  }, [graph, hideTests, focusImpact, impactState, grouping, folderFocus]);
 
-  const positions = useMemo(() => layout(graph, visible), [graph, visible]);
+  const projection = useMemo<Projection>(() => {
+    const owner = new Map<string, string>();
+    const nodes: Projection["nodes"] = [];
+    const stateOf = (file: string): NodeState => (impactState ? (impactState.state.get(file)?.s ?? "dim") : "idle");
 
-  const nodes: Node<FileNodeData>[] = useMemo(
-    () =>
-      graph.nodes
-        .filter((n) => visible.has(n.id))
-        .map((n) => {
-          const st = impactState?.state.get(n.id);
-          return {
-            id: n.id,
-            type: "file",
-            position: positions.get(n.id) ?? { x: 0, y: 0 },
-            data: {
-              path: n.path,
-              state: impactState ? (st?.s ?? "dim") : "idle",
-              depth: st && st.depth > 0 ? st.depth : null,
-              selected: n.id === selectedFile,
-              isTest: n.isTest,
-              emphasized: n.id === emphasizeFile,
-            },
-            // Explicit size + handles let React Flow render nodes and edges before DOM measurement.
-            width: NODE_W,
-            height: NODE_H,
-            handles: [
-              { type: "target" as const, position: Position.Left, x: 0, y: NODE_H / 2 - 3, width: 6, height: 6 },
-              { type: "source" as const, position: Position.Right, x: NODE_W - 6, y: NODE_H / 2 - 3, width: 6, height: 6 },
-            ],
-            draggable: true,
-            connectable: false,
-          };
-        }),
-    [graph, visible, positions, impactState, selectedFile, emphasizeFile],
-  );
+    if (grouping === "files") {
+      for (const n of visibleFiles) {
+        owner.set(n.id, n.id);
+        const st = impactState?.state.get(n.id);
+        nodes.push({
+          id: n.id,
+          data: { label: basename(n.path), sublabel: dirOf(n.path) || "/", ext: n.path.split(".").pop() ?? "", state: stateOf(n.id), depth: st && st.depth > 0 ? st.depth : null, isTest: n.isTest, folder: null },
+        });
+      }
+    } else {
+      const byDir = new Map<string, typeof visibleFiles>();
+      for (const n of visibleFiles) {
+        const d = n.dir || "/";
+        if (!byDir.has(d)) byDir.set(d, []);
+        byDir.get(d)!.push(n);
+        owner.set(n.id, FOLDER_PREFIX + d);
+      }
+      for (const [dir, files] of byDir) {
+        let best: NodeState = impactState ? "dim" : "idle";
+        let impacted = 0;
+        for (const f of files) {
+          const s = stateOf(f.id);
+          if (STATE_RANK[s] > STATE_RANK[best]) best = s;
+          if (s === "confirmed" || s === "possible") impacted++;
+        }
+        const segs = dir.split("/");
+        nodes.push({
+          id: FOLDER_PREFIX + dir,
+          data: {
+            label: `${segs[segs.length - 1]}/`,
+            sublabel: `${files.length} file${files.length === 1 ? "" : "s"}${segs.length > 1 ? ` · ${segs.slice(0, -1).join("/")}` : ""}`,
+            ext: "",
+            state: best,
+            depth: null,
+            isTest: files.every((f) => f.isTest),
+            folder: { files: files.length, impacted },
+          },
+        });
+      }
+    }
 
-  const edges: Edge[] = useMemo(() => {
-    const agg = new Map<string, { from: string; to: string; typeOnly: boolean; count: number; kinds: Set<string> }>();
+    const edges: Projection["edges"] = new Map();
     for (const e of graph.edges) {
-      if (!visible.has(e.source) || !visible.has(e.target)) continue;
-      const key = `${e.target}->${e.source}`;
-      const cur = agg.get(key);
+      const from = owner.get(e.target);
+      const to = owner.get(e.source);
+      if (!from || !to || from === to) continue;
+      const key = `${from}->${to}`;
+      const cur = edges.get(key);
       if (cur) {
         cur.count++;
         cur.typeOnly &&= e.typeOnly;
-        cur.kinds.add(e.kind);
-      } else agg.set(key, { from: e.target, to: e.source, typeOnly: e.typeOnly, count: 1, kinds: new Set([e.kind]) });
+        cur.dynamic &&= e.kind === "dynamic";
+        cur.underlying.add(`${e.target}->${e.source}`);
+      } else edges.set(key, { from, to, typeOnly: e.typeOnly, dynamic: e.kind === "dynamic", count: 1, underlying: new Set([`${e.target}->${e.source}`]) });
     }
-    return [...agg.entries()].map(([key, a]) => {
-      const onPath = impactState?.pathEdges.has(key);
-      const onChain = impactState?.chain.has(key);
-      const color = onChain ? "#ff8a5c" : onPath ? "#f5b14a" : impactState ? "#2d323a" : "#3a404a";
-      return {
-        id: key,
-        source: a.from,
-        target: a.to,
-        animated: !!onPath,
-        zIndex: onPath ? 10 : 0,
-        style: {
-          stroke: color,
-          strokeWidth: onChain ? 2.6 : onPath ? 1.8 : 1,
-          strokeOpacity: impactState && !onPath ? 0.45 : 1,
-          strokeDasharray: a.typeOnly ? "4 4" : a.kinds.has("dynamic") ? "1 4" : undefined,
-        },
-        markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
-      } satisfies Edge;
-    });
-  }, [graph, visible, impactState]);
+    return { nodes, edges, owner };
+  }, [graph, visibleFiles, grouping, impactState]);
+
+  const positions = useMemo(() => layout(projection.nodes.map((n) => n.id), projection.edges), [projection]);
+
+  const selectedId = selectedFile ? projection.owner.get(selectedFile) : null;
+  const emphasizedId = emphasizeFile ? projection.owner.get(emphasizeFile) : null;
+
+  const nodes: Node<NodeData>[] = useMemo(
+    () =>
+      projection.nodes.map((n) => ({
+        id: n.id,
+        type: "item",
+        position: positions.get(n.id) ?? { x: 0, y: 0 },
+        data: { ...n.data, selected: n.id === selectedId, emphasized: n.id === emphasizedId },
+        // Explicit size + handles let React Flow render nodes and edges before DOM measurement.
+        width: NODE_W,
+        height: NODE_H,
+        handles: [
+          { type: "target" as const, position: Position.Left, x: 0, y: NODE_H / 2 - 3, width: 6, height: 6 },
+          { type: "source" as const, position: Position.Right, x: NODE_W - 6, y: NODE_H / 2 - 3, width: 6, height: 6 },
+        ],
+        draggable: true,
+        connectable: false,
+      })),
+    [projection, positions, selectedId, emphasizedId],
+  );
+
+  const edges: Edge[] = useMemo(
+    () =>
+      [...projection.edges.entries()].map(([key, a]) => {
+        const under = [...a.underlying];
+        const onPath = !!impactState && under.some((k) => impactState.pathEdges.has(k));
+        const onChain = !!impactState && under.some((k) => impactState.chain.has(k));
+        const color = onChain ? "#ff8a5c" : onPath ? "#f5b14a" : impactState ? "#2d323a" : "#3a404a";
+        return {
+          id: key,
+          source: a.from,
+          target: a.to,
+          animated: onPath,
+          zIndex: onPath ? 10 : 0,
+          label: grouping === "folders" && a.count > 1 ? String(a.count) : undefined,
+          labelStyle: { fill: "#949ba6", fontSize: 10, fontFamily: "var(--font-mono)" },
+          labelBgStyle: { fill: "#0c0d10" },
+          labelBgPadding: [3, 1] as [number, number],
+          style: {
+            stroke: color,
+            strokeWidth: onChain ? 2.6 : onPath ? 1.8 : grouping === "folders" ? Math.min(1 + Math.log2(a.count), 4) : 1,
+            strokeOpacity: impactState && !onPath ? 0.45 : 1,
+            strokeDasharray: a.typeOnly ? "4 4" : a.dynamic ? "1 4" : undefined,
+          },
+          markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
+        } satisfies Edge;
+      }),
+    [projection, impactState, grouping],
+  );
 
   // Frame the impact area whenever a new report arrives.
   useEffect(() => {
     if (!report) return;
-    const ids = [report.target.file, ...report.impacted.map((n) => n.file)].filter((id) => visible.has(id));
-    const t = setTimeout(() => rf.fitView({ nodes: ids.map((id) => ({ id })), duration: 650, padding: 0.25, maxZoom: 1.1 }), 60);
+    const ids = new Set<string>();
+    for (const f of [report.target.file, ...report.impacted.map((n) => n.file)]) {
+      const id = projection.owner.get(f);
+      if (id) ids.add(id);
+    }
+    const t = setTimeout(() => rf.fitView({ nodes: [...ids].map((id) => ({ id })), duration: 650, padding: 0.25, maxZoom: 1.1 }), 60);
     return () => clearTimeout(t);
   }, [report, rf]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setTimeout(() => rf.fitView({ duration: 400, padding: 0.15 }), 60);
     return () => clearTimeout(t);
-  }, [hideTests, focusImpact, rf]);
+  }, [hideTests, focusImpact, grouping, folderFocus, rf]);
 
   return (
     <ReactFlow
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
-      onNodeClick={(_, n) => onSelectFile(n.id)}
+      onNodeClick={(_, n) => (n.id.startsWith(FOLDER_PREFIX) ? onOpenFolder(n.id.slice(FOLDER_PREFIX.length)) : onSelectFile(n.id))}
       fitView
       fitViewOptions={{ padding: 0.15 }}
-      minZoom={0.08}
+      minZoom={0.05}
       maxZoom={2}
-      onlyRenderVisibleElements={graph.nodes.length > 300}
+      onlyRenderVisibleElements={nodes.length > 300}
       proOptions={{ hideAttribution: true }}
       nodesConnectable={false}
       colorMode="dark"
@@ -239,7 +329,7 @@ function Canvas({ graph, selectedFile, report, emphasizeFile, focusImpact, hideT
         position="bottom-right"
         maskColor="rgba(8,9,11,0.7)"
         nodeColor={(n) => {
-          const s = (n.data as FileNodeData).state;
+          const s = (n.data as NodeData).state;
           return s === "target" ? "#ff6a3d" : s === "confirmed" || s === "possible" ? "#f5b14a" : s === "excluded" ? "#7c9cff" : "#2d323a";
         }}
         nodeStrokeWidth={0}

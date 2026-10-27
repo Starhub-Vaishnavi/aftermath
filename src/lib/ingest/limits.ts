@@ -8,10 +8,13 @@ export const LIMITS = {
 
 const IGNORED_DIRS = /(^|\/)(node_modules|\.git|dist|build|out|coverage|\.next|\.turbo|\.cache|vendor|bower_components)\//;
 
+/** Resolution config read (never executed): package manifests, tsconfig/jsconfig (incl. extended variants), workspace files. */
+const CONFIG_FILE = /(^|\/)(package\.json|tsconfig(\.[\w-]+)?\.json|jsconfig\.json|pnpm-workspace\.yaml|lerna\.json)$/;
+
 /** Files kept for analysis: JS/TS sources plus root config used for path aliases. */
 export function shouldKeep(path: string): boolean {
   if (IGNORED_DIRS.test(path)) return false;
-  if (path === "tsconfig.json" || path === "jsconfig.json" || path === "package.json") return true;
+  if (CONFIG_FILE.test(path)) return true;
   return /\.(c|m)?(j|t)sx?$/.test(path) && !/\.d\.(c|m)?ts$/.test(path) && !/\.min\.js$/.test(path);
 }
 

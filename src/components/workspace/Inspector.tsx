@@ -88,7 +88,14 @@ export function Inspector({
           {exports.map((e) => (
             <SymbolRow key={`${e.name}:${e.line}`} active={symbol === e.name} onClick={() => onSymbol(e.name)} name={e.name} kind={e.kind} line={e.line} typeOnly={e.typeOnly} />
           ))}
-          {exports.length === 0 && <div className="px-2 py-1 text-xs text-ink-500">This file has no exports.</div>}
+          {outgoing
+            .filter((e) => e.kind === "re-export-all")
+            .map((e) => (
+              <button key={e.id} onClick={() => onNavigate(e.target)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[11.5px] text-ink-400 hover:bg-ink-800 hover:text-ink-200">
+                <span className="font-mono">export *</span> from <span className="truncate font-mono text-ink-300">{e.target}</span>
+              </button>
+            ))}
+          {exports.length === 0 && !outgoing.some((e) => e.kind === "re-export-all") && <div className="px-2 py-1 text-xs text-ink-500">This file has no exports.</div>}
         </div>
 
         <div className="mt-4 rounded-xl border border-ink-800 bg-ink-900 px-3.5 py-3">

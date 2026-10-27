@@ -1,13 +1,21 @@
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { Investigation, InvestigationMeta, Project, ProjectMeta, Store } from "./types";
 
 const ID = /^[a-z0-9-]{6,64}$/;
 
+/** Serverless platforms only allow writes to the OS temp dir (and it is per-instance, so use PostgreSQL there). */
+function defaultRoot(): string {
+  if (process.env.AFTERMATH_DATA_DIR) return process.env.AFTERMATH_DATA_DIR;
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) return path.join(os.tmpdir(), "aftermath-data");
+  return path.join(process.cwd(), ".data");
+}
+
 /** Zero-config local persistence: one JSON file per record under `.data/`. */
 export class FileStore implements Store {
   readonly kind = "file" as const;
-  constructor(private readonly root = path.join(process.cwd(), ".data")) {}
+  constructor(private readonly root = defaultRoot()) {}
 
   private file(kind: "projects" | "investigations", id: string) {
     if (!ID.test(id)) throw new Error("Invalid id");

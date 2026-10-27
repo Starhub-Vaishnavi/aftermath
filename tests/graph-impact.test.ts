@@ -31,7 +31,7 @@ describe("buildGraph", () => {
 
   it("never invents edges: unknown specifiers are reported, not linked", () => {
     const graph = g({
-      "a.ts": `import React from "react"; import fs from "node:fs"; import { x } from "./missing"; import { y } from "@scope/pkg/sub";`,
+      "a.ts": `import React from "react"; import fs from "node:fs"; import { x } from "./missing"; import { y } from "@scope/pkg/sub"; import App from "./App.vue"; import "./styles.css";`,
       "b.ts": `export const unrelated = 1;`,
     });
     expect(graph.edges).toHaveLength(0);
@@ -40,6 +40,8 @@ describe("buildGraph", () => {
       "node:fs:builtin",
       "./missing:not-found",
       "@scope/pkg/sub:external-package",
+      "./App.vue:non-js-asset",
+      "./styles.css:non-js-asset",
     ]);
     expect(graph.externals.map((e) => e.name).sort()).toEqual(["@scope/pkg", "react"]);
   });

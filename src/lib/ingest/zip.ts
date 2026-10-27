@@ -76,7 +76,7 @@ export function extractZip(data: Uint8Array): ExtractResult {
   }
   files = files.filter((f) => shouldKeep(f.path)).sort((a, b) => a.path.localeCompare(b.path));
 
-  if (!files.some((f) => f.path !== "package.json" && f.path !== "tsconfig.json" && f.path !== "jsconfig.json")) {
+  if (!files.some((f) => /\.(c|m)?(j|t)sx?$/.test(f.path))) {
     throw new IngestError("No JavaScript or TypeScript source files were found in the archive.", 422);
   }
   return { files, skipped, rootPrefix };
