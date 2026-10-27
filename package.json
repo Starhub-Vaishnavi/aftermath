@@ -1,0 +1,36 @@
+{
+  "name": "aftermath",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "next build",
+    "start": "next start -p 3100",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.137.0",
+    "@dagrejs/dagre": "1.1.5",
+    "@xyflow/react": "12.8.6",
+    "fflate": "0.8.2",
+    "lucide-react": "0.545.0",
+    "next": "15.5.28",
+    "pg": "8.16.3",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "typescript": "5.9.3",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.1.14",
+    "@types/node": "22.18.8",
+    "@types/pg": "8.15.5",
+    "@types/react": "19.1.17",
+    "@types/react-dom": "19.1.11",
+    "tailwindcss": "4.1.14",
+    "vitest": "3.2.4"
+  }
+}

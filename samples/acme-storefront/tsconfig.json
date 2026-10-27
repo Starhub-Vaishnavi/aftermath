@@ -1,0 +1,9 @@
+{
+  // Path aliases are resolved by AFTERMATH exactly like the TypeScript compiler would.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] },
+    "jsx": "react-jsx",
+    "strict": true
+  }
+}

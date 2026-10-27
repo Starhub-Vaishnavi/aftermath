@@ -1,0 +1,5 @@
+{
+  "name": "acme-storefront",
+  "private": true,
+  "description": "AFTERMATH sample repo: a tiny storefront with a deliberate price-formatting dependency chain."
+}
