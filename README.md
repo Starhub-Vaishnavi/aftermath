@@ -14,7 +14,7 @@ import ─▶ parse ─▶ graph ─▶ select target ─▶ describe change ─
 | | |
 | --- | --- |
 | Source | https://github.com/Starhub-Vaishnavi/aftermath |
-| Live app | _added after deployment_ |
+| Live app | https://aftermath-taupe.vercel.app |
 | Demo video | _added after recording_ (shot list: [DEMO.md](DEMO.md)) |
 
 ---
@@ -35,7 +35,6 @@ Optional configuration (`.env.local`, see `.env.example`):
 | `ANTHROPIC_API_KEY` | Enables AI explanations (default model `claude-opus-5-5`). Without it, AFTERMATH produces graph-derived guidance and says so in the UI. |
 | `AFTERMATH_MODEL` | Override the model id. |
 | `DATABASE_URL` | Store projects and investigations in PostgreSQL (tables are created automatically). Without it, a JSON file store in `./.data` is used. |
-| `GITHUB_TOKEN` | Raises GitHub API rate limits for repository import. |
 
 ```bash
 npm test             # vitest: parser, resolver, monorepos, graph, impact, ingestion, LLM grounding, PostgreSQL store
@@ -52,7 +51,7 @@ The PostgreSQL store test runs against [PGlite](https://pglite.dev) (Postgres co
 2. Add environment variables:
    - `DATABASE_URL`: any PostgreSQL (Neon, Supabase, RDS…). **Recommended.** Serverless instances don't share a disk, so without it saved projects and investigations live in each instance's `/tmp` and can disappear. The bundled sample always works because it is rebuilt on demand.
    - `ANTHROPIC_API_KEY` (optional) for AI explanations.
-   - `GITHUB_TOKEN` (optional) for higher GitHub rate limits.
+   - `GITHUB_TOKEN`: not needed. Imports download `github.com/<owner>/<repo>/archive/HEAD.zip` directly, so they don't use the rate-limited REST API.
 3. Deploy. Route handlers run on the Node.js runtime; imports of large repositories are bounded by `maxDuration` (120 s).
 
 Any Node host (Render, Railway, Fly, a VM) also works with `npm run build && npm start`; there the JSON file store persists in `./.data` (or `AFTERMATH_DATA_DIR`).
@@ -147,7 +146,7 @@ The UI keeps three labels visually distinct: **confirmed** dependency, **possibl
 - Imported code is **never executed, installed, built or written to disk**. ZIPs are read in memory with `fflate`; entries are filtered by path *before* decompression.
 - Path traversal (`../`, absolute, drive letters, NUL) is rejected; `node_modules`, build output and vendored dirs are skipped; binary files masquerading as source are dropped.
 - Limits: 60 MB archive, 512 KB per file, 4,000 files, 40 MB of source (`lib/ingest/limits.ts`). Skipped counts are reported.
-- GitHub import only contacts `api.github.com` and `codeload.github.com` with a URL built from a validated `owner/repo/ref`. Private repos are rejected. Downloads are streamed with a hard size cap and timeouts.
+- GitHub import only contacts `github.com` and `codeload.github.com` (redirects elsewhere are refused) with a URL built from a validated `owner/repo/ref`. Private repos return 404 to anonymous archive requests and are rejected. Downloads are streamed with a hard size cap and timeouts.
 - Source shown in the UI is rendered as text, never as HTML.
 
 ### 6. Persistence

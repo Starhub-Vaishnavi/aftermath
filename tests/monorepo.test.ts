@@ -74,6 +74,19 @@ describe("workspace packages", () => {
   });
 });
 
+describe("root package self-reference", () => {
+  it("maps build output to source/ and otherwise treats the import as the published package", () => {
+    const graph = g({
+      "package.json": JSON.stringify({ name: "ky", exports: { types: "./distribution/index.d.ts", default: "./distribution/index.js" } }),
+      "source/index.ts": `export default function ky() {}`,
+      "test-d/a.ts": `import ky from "ky";`,
+    });
+    expect(edges(graph)).toEqual(["test-d/a.ts -> source/index.ts [workspace-package]"]);
+    const missing = g({ "package.json": JSON.stringify({ name: "solo", main: "./out/x.js" }), "t.ts": `import s from "solo";` });
+    expect(missing.unresolved.map((u) => u.reason)).toEqual(["external-package"]);
+  });
+});
+
 describe("nested tsconfig", () => {
   it("uses the nearest tsconfig and follows relative extends", () => {
     const graph = g({

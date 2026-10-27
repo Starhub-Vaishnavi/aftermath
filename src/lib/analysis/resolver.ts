@@ -25,7 +25,8 @@ const NON_JS_ASSET = /\.(vue|svelte|astro|css|scss|sass|less|styl|json|jsonc|ya?
 const CONDITIONS = ["source", "development", "types", "import", "module", "browser", "node", "default", "require"];
 
 /** Build-output directories that are commonly mirrored by a `src/` directory in the same package. */
-const BUILD_DIRS = /^(dist|build|lib|out|esm|cjs)\//;
+const BUILD_DIRS = /^(dist|distribution|build|lib|out|esm|cjs)\//;
+const SOURCE_DIRS = ["src/", "source/"];
 
 export interface TsconfigAliases {
   /** Directory containing the tsconfig (repo-relative, "" for root). */
@@ -267,8 +268,10 @@ export class ModuleResolver {
         if (hit) return hit;
         // Manifest points at build output (absent from source uploads): try the mirrored src/ path.
         if (BUILD_DIRS.test(rel)) {
-          const mirrored = this.probe(join(dir, rel.replace(BUILD_DIRS, "src/")).replace(/\.d\.(m|c)?ts$/, ""));
-          if (mirrored) return mirrored;
+          for (const src of SOURCE_DIRS) {
+            const mirrored = this.probe(join(dir, rel.replace(BUILD_DIRS, src)).replace(/\.d\.(m|c)?ts$/, ""));
+            if (mirrored) return mirrored;
+          }
         }
       }
       return null;
@@ -291,7 +294,7 @@ export class ModuleResolver {
 
     if (subpath) return this.probe(join(dir, subpath)) ?? tryTargets([subpath]);
     const fields = [manifest.source, manifest.module, manifest.main, manifest.types, manifest.typings].filter((f): f is string => typeof f === "string");
-    return tryTargets([...fields, "index", "src/index"]);
+    return tryTargets([...fields, "index", "src/index", "source/index"]);
   }
 
   resolve(importer: string, specifier: string): Resolved {
@@ -325,7 +328,10 @@ export class ModuleResolver {
     for (const pkg of this.config.packages) {
       if (specifier !== pkg.name && !specifier.startsWith(pkg.name + "/")) continue;
       const hit = this.resolvePackage(pkg, specifier.slice(pkg.name.length + 1));
-      return hit ? { path: hit, resolution: "workspace-package" } : { path: null, reason: "not-found" };
+      if (hit) return { path: hit, resolution: "workspace-package" };
+      // A root package importing itself by name usually means "the published build" (e.g. type tests).
+      if (pkg.dir === "") break;
+      return { path: null, reason: "not-found" };
     }
 
     // baseUrl-relative bare specifiers (e.g. `import x from "components/Button"`)
