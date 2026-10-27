@@ -15,7 +15,7 @@ import ─▶ parse ─▶ graph ─▶ select target ─▶ describe change ─
 | --- | --- |
 | Source | https://github.com/Starhub-Vaishnavi/aftermath |
 | Live app | https://aftermath-taupe.vercel.app (Vercel + Neon PostgreSQL) |
-| Demo video | _added after recording_ (shot list: [DEMO.md](DEMO.md)) |
+| Demo video | https://drive.google.com/file/d/1z6fdq42ioM3RqX8KmwSPMr7Iw0YuWFYO/view?usp=sharing |
 
 ---
 
