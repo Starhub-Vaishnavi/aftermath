@@ -94,7 +94,7 @@ export function deterministicExplanation(report: ImpactReport, change: string, n
     summary:
       report.impacted.length === 0
         ? `No file in this repository references ${name}. Static analysis found no dependents, so the change appears contained (runtime string lookups or external consumers are not visible to this analysis).`
-        : `${report.impacted.length} file${report.impacted.length === 1 ? "" : "s"} depend on ${name}: ${stats.direct} directly and ${stats.transitive} transitively, ${stats.confirmed} confirmed by symbol references and ${stats.possible} possible. ${stats.tests} test file${stats.tests === 1 ? "" : "s"} exercise this path. Behavioral risk is not assessed without an LLM; review the evidence for each dependent.`,
+        : `${report.impacted.length} file${report.impacted.length === 1 ? "" : "s"} depend on ${name}: ${stats.direct} directly and ${stats.transitive} transitively, ${stats.confirmed} confirmed by symbol references and ${stats.possible} possible. ${stats.tests} test file${stats.tests === 1 ? " exercises" : "s exercise"} this path. Behavioral risk is not assessed without an LLM; review the evidence for each dependent.`,
     risks,
     checklist: [
       { step: `Implement the change in ${target.file}${target.symbol ? ` (${target.symbol})` : ""}: ${change.slice(0, 140)}`, file: target.file },
